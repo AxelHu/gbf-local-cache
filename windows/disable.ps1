@@ -1,7 +1,7 @@
 param(
     [switch]$RemoveCertificate,
     [string]$PacUrl = 'http://127.0.0.1:18124/proxy.pac',
-    [string]$CertPath = (Join-Path $env:LOCALAPPDATA 'GBFLocalCache\mitmproxy-ca-cert.cer')
+    [string]$CertPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,6 +11,14 @@ $StateDir = Join-Path $env:LOCALAPPDATA 'GBFLocalCache'
 $Backup = Join-Path $StateDir 'internet-settings-backup.json'
 $RegPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
 $current = Get-ItemProperty $RegPath
+
+if (-not $CertPath) {
+    $portableCopy = Join-Path $StateDir 'mitmproxy-ca-cert.cer'
+    $nativeCert = Join-Path $StateDir 'mitmproxy\mitmproxy-ca-cert.cer'
+    if (Test-Path $portableCopy) { $CertPath = $portableCopy }
+    elseif (Test-Path $nativeCert) { $CertPath = $nativeCert }
+    else { $CertPath = $portableCopy }
+}
 
 if ($current.AutoConfigURL -eq $PacUrl) {
     if (Test-Path $Backup) {

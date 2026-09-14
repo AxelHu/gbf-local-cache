@@ -11,7 +11,11 @@
 - 可选读取已有 ACGPower `cache/gbf` 目录作为 **只读 legacy cache**，用 ETag / Last-Modified 验证后复用，无需运行 ACGPower 本体。
 - GBF CDN 的 PAC 规则包含 `DIRECT` fallback：本地缓存服务停掉时，静态资源仍可直接访问 CDN。
 
-## 快速部署（Windows + WSL2 + Chrome）
+## 两种部署方式
+
+两种方式使用完全相同的缓存核心、PAC 和 Chrome 配置，任选一种即可；**不要让两种运行时同时占用同一组端口**。
+
+### A. Windows + WSL2（推荐给已有 WSL 的机器）
 
 ```bash
 git clone <repo-url> gbf-local-cache
@@ -31,15 +35,66 @@ powershell.exe -ExecutionPolicy Bypass -File "<repo-on-windows>\windows\enable.p
 
 完整部署、企业环境已有 PAC 时的注意事项、自动启动和回滚方法见 [`docs/deployment.md`](docs/deployment.md)。
 
+### B. 纯 Windows（不需要 WSL）
+
+把仓库 clone 到普通 Windows 本地路径，例如 `C:\src\gbf-local-cache`。原生模式不要从 `\\wsl.localhost\...` UNC 路径运行，因为 Windows Python venv 不适合建在 WSL UNC 文件系统中。
+
+PowerShell：
+
+```powershell
+git clone <repo-url> C:\src\gbf-local-cache
+cd C:\src\gbf-local-cache
+Copy-Item .env.windows.example .env.windows
+# 按机器实际情况编辑 .env.windows；无 ACGPower 旧缓存就把 GBF_LEGACY_CACHE_ROOTS 设为空。
+
+# 已有 Python 3.12/3.13：
+.\windows\install-native.ps1
+
+# 没有兼容 Python，且机器有 winget：
+.\windows\install-native.ps1 -InstallPython
+
+.\windows\enable.ps1
+```
+
+默认 Windows primary cache：
+
+```text
+%LOCALAPPDATA%\GBFLocalCache\cache\gbf
+```
+
+原生模式的运行管理：
+
+```powershell
+.\windows\start-native.ps1
+.\windows\status-native.ps1
+.\windows\stop-native.ps1
+```
+
+登录自启动：
+
+```powershell
+.\windows\install-native-autostart.ps1
+```
+
+完整纯 Windows 说明见 [`docs/windows-native.md`](docs/windows-native.md)。这条路径已经在 Windows Python 3.12 + mitmproxy 12.2.3 上做过真实 CDN 与 legacy cache 端到端验证，并非仅文档级支持。
+
 ## 缓存目录配置
 
-默认 primary cache：
+WSL 模式默认 primary cache：
 
 ```text
 ~/.cache/gbf-local-cache/gbf
 ```
 
 建议 primary cache 放在 WSL/ext4 上，因为 GBF 会产生大量小文件。
+
+纯 Windows 模式则使用 `.env.windows`，默认：
+
+```text
+%LOCALAPPDATA%\GBFLocalCache\cache\gbf
+```
+
+如果有较快的本地 SSD，也可以把 `GBF_CACHE_ROOT` 改到其它 Windows 本地目录。
 
 ACGPower legacy cache 完全可选。`.env.example` 中保留了常见目录作为**示例**：
 
@@ -70,7 +125,7 @@ legacy cache 永远只读。验证成功的资源会按需提升到 primary cach
 - HTTPS forward proxy：`18123`
 - PAC HTTP server：`18124`
 
-这些值以及 cache 根目录、校验窗口都可以在 `.env` 中修改。
+这些值以及 cache 根目录、校验窗口在 WSL 模式使用 `.env`，Windows 原生模式使用 `.env.windows` 修改。
 
 响应头可用于确认缓存状态：
 
@@ -117,8 +172,16 @@ example.com
 
 ## 测试
 
+WSL：
+
 ```bash
 .venv/bin/pytest -q
+```
+
+Windows 原生：
+
+```powershell
+.\.venv-windows\Scripts\python.exe -m pytest -q
 ```
 
 开发机上的真实链路验证记录见 [`docs/validation-20260914.md`](docs/validation-20260914.md)。

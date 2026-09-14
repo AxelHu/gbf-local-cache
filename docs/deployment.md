@@ -1,8 +1,15 @@
 # Deployment guide
 
-本文档面向另一台 Windows + WSL2 机器上的人或自动化 Agent。目标是部署 GBF 静态资源本地缓存，同时保证其它网站流量不经过本项目代理。
+本文档面向另一台 Windows 机器上的人或自动化 Agent。目标是部署 GBF 静态资源本地缓存，同时保证其它网站流量不经过本项目代理。
 
-## 1. 前提
+项目支持两种运行方式：
+
+- **WSL2 模式**：服务运行在 WSL，适合已经长期使用 WSL 的机器；
+- **Windows native 模式**：服务直接运行在 Windows Python 中，不需要 WSL，详见 [`windows-native.md`](windows-native.md)。
+
+两种方式只选一种即可；默认都占用 `18123/18124`，不要同时启动。
+
+## 1. WSL2 模式前提
 
 推荐环境：
 
@@ -14,6 +21,8 @@
 - Windows PowerShell 5.1+
 
 服务运行在 WSL 中，Windows Chrome 通过系统 PAC 只把 GBF 静态 CDN 请求送到 WSL 的 localhost proxy。
+
+如果目标环境不方便使用 WSL，直接跳到 [`windows-native.md`](windows-native.md)，无需安装 WSL。
 
 ## 2. Clone 与配置
 
@@ -187,15 +196,15 @@ wsl.exe -l -q
 
 部署 Agent 至少应给出这些可验证结果：
 
-1. `./bin/status.sh` 显示 running；
+1. WSL 模式 `./bin/status.sh` 或 native 模式 `.\windows\status-native.ps1` 显示 running；
 2. `18123` 和 `18124` 正在监听；
 3. PAC 对 `prd-game-a-gbf.akamaized.net` 返回 `PROXY 127.0.0.1:18123; DIRECT`；
 4. PAC 对 `game.granbluefantasy.jp`、`ws.game.granbluefantasy.jp`、普通网站返回 `DIRECT`；
 5. Windows CurrentUser Root 中存在当前安装生成的 CA；
 6. Chrome/Windows 普通网络栈请求 GBF 静态资源能看到 `X-GBF-Local-Cache`；
 7. 访问普通网站时本地 proxy 日志不应出现对应请求；
-8. `.env` 中的 legacy cache 路径符合目标机器，不应照抄示例而不检查实际磁盘；
-9. `.state/`、`.env`、实际缓存、CA 私钥不可提交到 Git。
+8. WSL 的 `.env` 或 native 的 `.env.windows` 中 legacy cache 路径符合目标机器，不应照抄示例而不检查实际磁盘；
+9. `.state/`、`.env`、`.env.windows`、`.venv-windows/`、实际缓存、CA 私钥不可提交到 Git。
 
 ## 9. 端口和其它参数
 

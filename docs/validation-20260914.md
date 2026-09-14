@@ -27,3 +27,18 @@ Five fresh curl processes per mode were used, so each local number still include
 | `assets/font/basic_alphabet.woff` | ~0.678 s | ~0.01087 s | ~62.4x |
 
 This ratio is a per-request round-trip comparison, not a claim that a complete GBF page becomes 48–62 times faster. A page mixes parallel requests, browser parsing/rendering, and dynamic API/server work. It does show why eliminating repeated remote static-resource checks is perceptible for GBF's many small assets.
+
+## Native Windows path
+
+The non-WSL path was subsequently exercised on the same Windows machine without replacing the existing WSL service. A temporary native instance used ports `28123/28124` while the production WSL instance remained on `18123/18124`.
+
+- Installed Python 3.12.10 side-by-side with the pre-existing Python 3.8 using `winget`.
+- Created a Windows-local `.venv-windows` and installed mitmproxy 12.2.3.
+- Native `status-native.ps1` reported both PAC and mitmproxy processes healthy.
+- Real `require-config.js` request: first response `MISS-STORED`, second response `HIT-PRIMARY`; both bodies MD5 `41098DDDF050C2E32D12A223C3C1E0A3` (991 bytes).
+- Real legacy `basic_alphabet.woff`: `REVALIDATED`; served MD5 `FC870BC11FE7ED65195A5D74AF82E114` (16,176 bytes), matching the legacy body.
+- Windows-native test suite: 7 passed.
+- Native Startup VBS was installed, verified to exist, then uninstalled successfully.
+- The original WSL service remained running throughout the native test.
+
+One expected constraint was confirmed: Windows Python cannot create the native venv when the repository itself is addressed through `\\wsl.localhost\...`. Native deployments therefore require a normal Windows local-drive clone such as `C:\src\gbf-local-cache`; the installer now rejects WSL UNC roots with a clear error.

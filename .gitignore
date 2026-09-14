@@ -1,6 +1,8 @@
 .venv/
+.venv-windows/
 .state/
 .env
+.env.windows
 __pycache__/
 .pytest_cache/
 *.pyc
