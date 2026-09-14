@@ -1,0 +1,9 @@
+[project]
+name = "gbf-local-cache"
+version = "0.1.0"
+description = "A narrow local HTTPS asset cache for Granblue Fantasy, with read-only ACGPower cache reuse."
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
