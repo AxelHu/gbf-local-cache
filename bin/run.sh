@@ -2,13 +2,21 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ -f "$ROOT/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT/.env"
+  set +a
+fi
+
 STATE="${GBF_CACHE_STATE_DIR:-$ROOT/.state}"
 CONF="$STATE/mitmproxy"
 PROXY_PORT="${GBF_CACHE_PROXY_PORT:-18123}"
 PAC_PORT="${GBF_CACHE_PAC_PORT:-18124}"
 
 export GBF_CACHE_ROOT="${GBF_CACHE_ROOT:-$HOME/.cache/gbf-local-cache/gbf}"
-export GBF_LEGACY_CACHE_ROOTS="${GBF_LEGACY_CACHE_ROOTS:-/mnt/f/Programs/acgpower-x64/cache/gbf;/mnt/f/Programs/acgpower/cache/gbf}"
+export GBF_LEGACY_CACHE_ROOTS="${GBF_LEGACY_CACHE_ROOTS:-}"
 export GBF_CACHE_FRESH_SECONDS="${GBF_CACHE_FRESH_SECONDS:-21600}"
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 export PYTHONUNBUFFERED=1

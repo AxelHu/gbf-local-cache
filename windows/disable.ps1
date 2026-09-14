@@ -1,12 +1,14 @@
-param([switch]$RemoveCertificate)
+param(
+    [switch]$RemoveCertificate,
+    [string]$PacUrl = 'http://127.0.0.1:18124/proxy.pac',
+    [string]$CertPath = (Join-Path $env:LOCALAPPDATA 'GBFLocalCache\mitmproxy-ca-cert.cer')
+)
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::UTF8
 
-$PacUrl = 'http://127.0.0.1:18124/proxy.pac'
 $StateDir = Join-Path $env:LOCALAPPDATA 'GBFLocalCache'
 $Backup = Join-Path $StateDir 'internet-settings-backup.json'
-$CertPath = 'F:\Programs\gbf-local-cache\mitmproxy-ca-cert.cer'
 $RegPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
 $current = Get-ItemProperty $RegPath
 

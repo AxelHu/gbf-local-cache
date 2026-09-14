@@ -1,6 +1,11 @@
 .venv/
 .state/
+.env
 __pycache__/
 .pytest_cache/
 *.pyc
 *.log
+*.p12
+mitmproxy-ca.pem
+mitmproxy-ca-cert.cer
+cache/

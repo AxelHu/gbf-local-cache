@@ -1,28 +1,63 @@
 # GBF Local Cache
 
-本地《碧蓝幻想》静态资源 HTTPS 缓存，目标是替代 ACGPower 的 GBF 本地缓存功能，而不接管其它网站流量。
+《碧蓝幻想》（Granblue Fantasy）静态资源本地 HTTPS 缓存。项目目标是复刻 ACGPower 中最有价值、又完全可以本地独立实现的 **GBF 浏览器资源缓存**，但不接管游戏 API、登录、WebSocket 或其它网站流量。
 
-## 边界
+## 它做什么
 
-- PAC **只**代理 `prd-game-a*-gbf.akamaized.net` 与 `prd-game-a*-granbluefantasy.akamaized.net`。
-- `game.granbluefantasy.jp`、登录、API、WebSocket 以及所有其它网站均 `DIRECT`。
-- GBF CDN 规则带 `DIRECT` fallback：本地服务停止时，浏览器仍可直接访问 CDN。
+- PAC **只**代理 `prd-game-a*-gbf.akamaized.net` 与 `prd-game-a*-granbluefantasy.akamaized.net` 两组 GBF 静态 Akamai CDN 域名。
+- `game.granbluefantasy.jp`、登录/API、WebSocket 和所有无关网站均 `DIRECT`。
 - 只缓存 GET 静态资源；Range、Authorization、HTML/JSON、`no-store`/`private` 响应绕过缓存。
+- 首次下载的新资源写入本地 primary cache；之后优先从本地磁盘返回。
+- 可选读取已有 ACGPower `cache/gbf` 目录作为 **只读 legacy cache**，用 ETag / Last-Modified 验证后复用，无需运行 ACGPower 本体。
+- GBF CDN 的 PAC 规则包含 `DIRECT` fallback：本地缓存服务停掉时，静态资源仍可直接访问 CDN。
 
-## ACGPower 兼容
+## 快速部署（Windows + WSL2 + Chrome）
 
-ACGPower 的 GBF 缓存布局为 `cache/gbf/<scheme>/<absolute path>`，旁边的 `.ext` JSON 保存 `LastModified`、`ETag`、`at`、`md5`、`ce`、`ct`、`v`。本项目直接读取现有两套缓存：
+```bash
+git clone <repo-url> gbf-local-cache
+cd gbf-local-cache
+cp .env.example .env
+# 按本机情况编辑 .env；没有 ACGPower 旧缓存就把 GBF_LEGACY_CACHE_ROOTS 设为空。
+./bin/install.sh
+```
 
-1. `F:\Programs\acgpower-x64\cache\gbf`：62,919 个正文，约 1.61 GiB；最近写入 2026-09-10。
-2. `F:\Programs\acgpower\cache\gbf`：636,178 个正文，约 16.78 GiB；另有约 59 万 `.ext` 元数据。
+然后在 Windows PowerShell 中运行：
 
-两套都视为 **只读 legacy 层**。同一路径若两边都有，优先使用 `.ext` 中最近一次校验/访问时间较新的版本；随后仍会按 ETag/Last-Modified 对当前 CDN 做条件请求。仍有效则按需提升到 WSL ext4 的 primary cache，避免长期在 `/mnt/f` 上承受大量小文件 I/O。新/更新资源只写：
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File "<repo-on-windows>\windows\enable.ps1"
+```
 
-`~/.cache/gbf-local-cache/gbf`
+第一次安装本项目的本地根 CA 时，Windows 可能弹出根证书信任确认。确认后，完全退出并重新打开 Chrome 一次即可。Chrome 默认跟随 Windows 系统 PAC，无需安装扩展、无需手动把浏览器全局代理设成 `127.0.0.1:18123`。
 
-默认 6 小时内的已验证 primary cache 直接本地命中，之后再条件校验一次。
+完整部署、企业环境已有 PAC 时的注意事项、自动启动和回滚方法见 [`docs/deployment.md`](docs/deployment.md)。
 
-## 运行
+## 缓存目录配置
+
+默认 primary cache：
+
+```text
+~/.cache/gbf-local-cache/gbf
+```
+
+建议 primary cache 放在 WSL/ext4 上，因为 GBF 会产生大量小文件。
+
+ACGPower legacy cache 完全可选。`.env.example` 中保留了常见目录作为**示例**：
+
+```bash
+GBF_LEGACY_CACHE_ROOTS="/mnt/f/Programs/acgpower-x64/cache/gbf;/mnt/f/Programs/acgpower/cache/gbf"
+```
+
+多目录使用分号 `;` 分隔；没有旧缓存时写：
+
+```bash
+GBF_LEGACY_CACHE_ROOTS=""
+```
+
+legacy cache 永远只读。验证成功的资源会按需提升到 primary cache，新资源也只写 primary cache。
+
+仓库中的 [`examples/acgpower-cache`](examples/acgpower-cache) 只包含自制的最小目录/元数据样例，不包含任何真实游戏资源。
+
+## 运行与状态
 
 ```bash
 ./bin/start.sh
@@ -30,19 +65,55 @@ ACGPower 的 GBF 缓存布局为 `cache/gbf/<scheme>/<absolute path>`，旁边�
 ./bin/stop.sh
 ```
 
-端口：HTTPS forward proxy `18123`；PAC HTTP server `18124`。
+默认端口：
 
-mitmproxy CA 位于 `.state/mitmproxy/mitmproxy-ca-cert.cer`。Windows 启用脚本使用复制到 `F:\Programs\gbf-local-cache\mitmproxy-ca-cert.cer` 的证书，并只修改当前用户的 `AutoConfigURL`。原值会备份，`disable.ps1` 可恢复。
+- HTTPS forward proxy：`18123`
+- PAC HTTP server：`18124`
 
-当前机器的 Windows CurrentUser Root 已安装本项目独立 CA；PAC 为 `http://127.0.0.1:18124/proxy.pac`。PAC 仅对 GBF 静态 Akamai 域名返回本地代理，其余全部 `DIRECT`，并为 GBF 本地代理配置 `DIRECT` fallback。
+这些值以及 cache 根目录、校验窗口都可以在 `.env` 中修改。
 
-可选的登录自启动：
+响应头可用于确认缓存状态：
 
-```powershell
-F:\Programs\gbf-local-cache\windows\install-autostart.ps1
+- `X-GBF-Local-Cache: HIT-PRIMARY`：primary cache 直接命中。
+- `X-GBF-Local-Cache: REVALIDATED`：旧/过期缓存经 CDN 条件请求确认后复用。
+- `X-GBF-Local-Cache: MISS-STORED`：本次从 CDN 下载并写入 primary cache。
+
+## ACGPower 兼容
+
+ACGPower 的 GBF 缓存布局近似：
+
+```text
+cache/gbf/<scheme>/<absolute URL path>
 ```
 
-它只在当前用户 Startup 目录写一个静默 VBS，启动 WSL 中的缓存服务；`uninstall-autostart.ps1` 可移除。PAC/证书不依赖这个启动项，服务若未启动时静态 CDN 会自动回退直连。
+正文旁的 `.ext` JSON 保存 `LastModified`、`ETag`、`at`、`md5`、`ce`、`ct`、`v` 等字段。本项目兼容这种布局，但不会修改旧目录。
+
+更多逆向兼容记录见 [`docs/acgpower-compat.md`](docs/acgpower-compat.md)。
+
+## 隔离边界
+
+PAC 对以下域名返回本地代理：
+
+```text
+prd-game-a-gbf.akamaized.net
+prd-game-a1-gbf.akamaized.net
+prd-game-a2-gbf.akamaized.net
+...
+prd-game-a-granbluefantasy.akamaized.net
+prd-game-a1-granbluefantasy.akamaized.net
+...
+```
+
+而以下请求始终 `DIRECT`：
+
+```text
+game.granbluefantasy.jp
+ws.game.granbluefantasy.jp
+example.com
+以及其它所有非上述静态 CDN 域名
+```
+
+因此它是一个“GBF 静态资源本地 CDN”，不是线路加速器。动态游戏请求的跨境网络质量仍由用户自己的网络/其它加速方案决定。
 
 ## 测试
 
@@ -50,6 +121,4 @@ F:\Programs\gbf-local-cache\windows\install-autostart.ps1
 .venv/bin/pytest -q
 ```
 
-真实 CDN 首次请求应显示 `X-GBF-Local-Cache: MISS-STORED` 或 `REVALIDATED`；紧接着第二次请求应为 `HIT-PRIMARY`。
-
-已在本机完成三层真实验证：WSL `curl`、Windows `Invoke-WebRequest`、独立 Chrome profile。GBF 静态资源出现 `HIT-PRIMARY`；同一 Windows/Chrome 环境访问 `example.com` 时本地代理日志无请求，验证了非 GBF 流量不经过 18123。
+开发机上的真实链路验证记录见 [`docs/validation-20260914.md`](docs/validation-20260914.md)。

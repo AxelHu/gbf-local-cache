@@ -1,10 +1,14 @@
+param(
+    [string]$PacUrl = 'http://127.0.0.1:18124/proxy.pac',
+    [string]$CertPath = (Join-Path $env:LOCALAPPDATA 'GBFLocalCache\mitmproxy-ca-cert.cer'),
+    [switch]$ForceReplacePac
+)
+
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::UTF8
 
-$PacUrl = 'http://127.0.0.1:18124/proxy.pac'
 $StateDir = Join-Path $env:LOCALAPPDATA 'GBFLocalCache'
 $Backup = Join-Path $StateDir 'internet-settings-backup.json'
-$CertPath = 'F:\Programs\gbf-local-cache\mitmproxy-ca-cert.cer'
 $RegPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
 
 New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
@@ -31,6 +35,14 @@ if (-not $trusted) {
 }
 
 $current = Get-ItemProperty $RegPath
+if (
+    $null -ne $current.AutoConfigURL -and
+    -not [string]::IsNullOrWhiteSpace([string]$current.AutoConfigURL) -and
+    ([string]$current.AutoConfigURL -ne $PacUrl) -and
+    -not $ForceReplacePac
+) {
+    throw "An existing AutoConfigURL is already configured: $($current.AutoConfigURL). Refusing to replace it automatically. Review the corporate/system PAC first, or rerun with -ForceReplacePac if replacement is intentional."
+}
 if (-not (Test-Path $Backup)) {
     [pscustomobject]@{
         HadAutoConfigURL = ($null -ne $current.AutoConfigURL)

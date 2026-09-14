@@ -31,10 +31,7 @@ class Stats:
 class GBFLocalCache:
     def __init__(self) -> None:
         primary = Path(os.environ.get("GBF_CACHE_ROOT", "~/.cache/gbf-local-cache/gbf")).expanduser()
-        legacy_values = os.environ.get(
-            "GBF_LEGACY_CACHE_ROOTS",
-            "/mnt/f/Programs/acgpower-x64/cache/gbf;/mnt/f/Programs/acgpower/cache/gbf",
-        )
+        legacy_values = os.environ.get("GBF_LEGACY_CACHE_ROOTS", "")
         legacy = [Path(value).expanduser() for value in legacy_values.split(";") if value]
         self.store = CacheStore(primary, legacy)
         self.fresh_seconds = int(os.environ.get("GBF_CACHE_FRESH_SECONDS", "21600"))
