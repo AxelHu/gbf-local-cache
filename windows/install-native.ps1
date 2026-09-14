@@ -14,7 +14,7 @@ $python = Get-GBFCompatiblePython
 if (-not $python -and $InstallPython) {
     $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
     if (-not $winget) {
-        throw 'Python 3.12/3.13 is missing and winget is unavailable. Install Python 3.12+ (<3.14) manually, then rerun.'
+        throw 'Python 3.12+ is missing and winget is unavailable. Install Python 3.12+ manually, then rerun.'
     }
     Write-Host 'Installing Python 3.12 for the current user via winget...'
     & $winget.Source install --id Python.Python.3.12 -e --scope user --accept-package-agreements --accept-source-agreements
@@ -27,7 +27,7 @@ if (-not $python -and $InstallPython) {
 }
 
 if (-not $python) {
-    throw 'Python 3.12 or 3.13 is required. Install it, or rerun with -InstallPython (requires winget).'
+    throw 'Python 3.12+ is required. Install it, or rerun with -InstallPython (requires winget).'
 }
 
 if (-not (Test-Path (Join-Path $cfg.RepoRoot '.env.windows'))) {
@@ -42,15 +42,15 @@ if (-not (Test-Path (Join-Path $cfg.VenvRoot 'Scripts\python.exe'))) {
 }
 
 $venvPython = Join-Path $cfg.VenvRoot 'Scripts\python.exe'
-& $venvPython -m pip install --upgrade pip
-if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed' }
-& $venvPython -m pip install -r (Join-Path $cfg.RepoRoot 'requirements.txt')
+& $venvPython -m pip install --disable-pip-version-check -r (Join-Path $cfg.RepoRoot 'requirements.txt')
 if ($LASTEXITCODE -ne 0) { throw 'dependency installation failed' }
 
 & (Join-Path $PSScriptRoot 'start-native.ps1')
 
 $ca = Join-Path $cfg.MitmConfRoot 'mitmproxy-ca-cert.cer'
 if (-not (Test-Path $ca)) { throw "mitmproxy CA was not generated: $ca" }
+$portableCa = Join-Path $cfg.StateRoot 'mitmproxy-ca-cert.cer'
+Copy-Item -LiteralPath $ca -Destination $portableCa -Force
 
 Write-Host ''
 Write-Host 'Native Windows service is ready.'

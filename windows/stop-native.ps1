@@ -11,7 +11,7 @@ if (-not (Test-Path $cfg.RuntimeFile)) {
 $runtime = Get-Content -Raw $cfg.RuntimeFile | ConvertFrom-Json
 foreach ($pidValue in @([int]$runtime.mitm_pid, [int]$runtime.pac_pid)) {
     if (Test-GBFOwnedProcess $pidValue $cfg.RepoRoot) {
-        Stop-Process -Id $pidValue -Force -ErrorAction SilentlyContinue
+        Stop-GBFProcessTree $pidValue
     }
 }
 Remove-Item $cfg.RuntimeFile -Force -ErrorAction SilentlyContinue

@@ -8,7 +8,7 @@
 - Windows PowerShell 5.1+；
 - Google Chrome / Chromium；
 - Git；
-- Python **3.12 或 3.13**。mitmproxy 12.2.3 要求 Python >=3.12；当前脚本暂不自动选择 3.14+。
+- Python **3.12+**。mitmproxy 12.2.3 要求 Python >=3.12。
 
 如果没有兼容 Python，但机器有 `winget`，安装脚本可以使用官方 `Python.Python.3.12` 包：
 
@@ -48,6 +48,7 @@ GBF_LEGACY_CACHE_ROOTS="F:\Programs\acgpower-x64\cache\gbf;F:\Programs\acgpower\
 GBF_CACHE_FRESH_SECONDS=21600
 GBF_CACHE_PROXY_PORT=18123
 GBF_CACHE_PAC_PORT=18124
+GBF_UPSTREAM_PROXY=""
 GBF_WINDOWS_STATE_ROOT="%LOCALAPPDATA%\GBFLocalCache"
 ```
 
@@ -61,9 +62,19 @@ GBF_LEGACY_CACHE_ROOTS=""
 
 `.env.windows` 被 `.gitignore` 排除，不会进入仓库。
 
+### 已有本地代理
+
+如果 GBF 静态 CDN 原本也需要走本机代理，配置其 HTTP CONNECT 地址，例如：
+
+```text
+GBF_UPSTREAM_PROXY="http://127.0.0.1:1080"
+```
+
+这只影响缓存 MISS 和条件校验。已命中的资源仍完全从本地返回，普通网站也不会因此进入缓存代理。不需要回源代理时保持为空。
+
 ## 4. 安装和启动
 
-已有 Python 3.12/3.13：
+已有 Python 3.12+：
 
 ```powershell
 .\windows\install-native.ps1
@@ -139,6 +150,7 @@ Chrome 完全退出再打开一次后即可使用，无需浏览器扩展。
 
 - 第一次静态资源可以是 `MISS-STORED` / `REVALIDATED`；
 - 第二次相同资源应出现 `HIT-PRIMARY`；
+- 首次请求未缓存资源时，应确认能及时完成；配置了 `GBF_UPSTREAM_PROXY` 时，mitmproxy 日志中的上游连接应指向该代理；
 - 普通网站和 `game.granbluefantasy.jp` 不应进入本地 proxy。
 
 开发机在 2026-09-14 做过真实 Windows-native 端到端验证：

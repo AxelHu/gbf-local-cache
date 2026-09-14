@@ -34,6 +34,14 @@ cp .env.example .env
 
 编辑 `.env`。
 
+如果静态 CDN 原本也必须经过现有本地代理，可设置 HTTP CONNECT 上游，例如：
+
+```bash
+GBF_UPSTREAM_PROXY="http://127.0.0.1:1080"
+```
+
+该设置只用于缓存 MISS 和条件校验。PAC 不会自动串联 Windows 的 `ProxyServer`；不需要时保持为空。
+
 ### 没有 ACGPower 旧缓存
 
 ```bash
@@ -203,8 +211,9 @@ wsl.exe -l -q
 5. Windows CurrentUser Root 中存在当前安装生成的 CA；
 6. Chrome/Windows 普通网络栈请求 GBF 静态资源能看到 `X-GBF-Local-Cache`；
 7. 访问普通网站时本地 proxy 日志不应出现对应请求；
-8. WSL 的 `.env` 或 native 的 `.env.windows` 中 legacy cache 路径符合目标机器，不应照抄示例而不检查实际磁盘；
-9. `.state/`、`.env`、`.env.windows`、`.venv-windows/`、实际缓存、CA 私钥不可提交到 Git。
+8. 至少用一个未缓存/需校验的资源验证回源链路，不能只验证已有缓存命中；
+9. WSL 的 `.env` 或 native 的 `.env.windows` 中 legacy cache 路径符合目标机器，不应照抄示例而不检查实际磁盘；
+10. `.state/`、`.env`、`.env.windows`、`.venv-windows/`、实际缓存、CA 私钥不可提交到 Git。
 
 ## 9. 端口和其它参数
 

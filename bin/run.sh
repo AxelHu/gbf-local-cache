@@ -14,6 +14,10 @@ STATE="${GBF_CACHE_STATE_DIR:-$ROOT/.state}"
 CONF="$STATE/mitmproxy"
 PROXY_PORT="${GBF_CACHE_PROXY_PORT:-18123}"
 PAC_PORT="${GBF_CACHE_PAC_PORT:-18124}"
+MITM_MODE="regular"
+if [[ -n "${GBF_UPSTREAM_PROXY:-}" ]]; then
+  MITM_MODE="upstream:${GBF_UPSTREAM_PROXY}"
+fi
 
 export GBF_CACHE_ROOT="${GBF_CACHE_ROOT:-$HOME/.cache/gbf-local-cache/gbf}"
 export GBF_LEGACY_CACHE_ROOTS="${GBF_LEGACY_CACHE_ROOTS:-}"
@@ -36,7 +40,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 "$ROOT/.venv/bin/mitmdump" \
-  --mode regular \
+  --mode "$MITM_MODE" \
   --listen-host 0.0.0.0 \
   --listen-port "$PROXY_PORT" \
   --set "confdir=$CONF" \

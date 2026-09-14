@@ -47,7 +47,7 @@ cd C:\src\gbf-local-cache
 Copy-Item .env.windows.example .env.windows
 # 按机器实际情况编辑 .env.windows；无 ACGPower 旧缓存就把 GBF_LEGACY_CACHE_ROOTS 设为空。
 
-# 已有 Python 3.12/3.13：
+# 已有 Python 3.12+：
 .\windows\install-native.ps1
 
 # 没有兼容 Python，且机器有 winget：
@@ -169,6 +169,14 @@ example.com
 ```
 
 因此它是一个“GBF 静态资源本地 CDN”，不是线路加速器。动态游戏请求的跨境网络质量仍由用户自己的网络/其它加速方案决定。
+
+如果静态 CDN 本身也需要经过已有的本地网络代理，在 `.env` 或 `.env.windows` 中设置：
+
+```text
+GBF_UPSTREAM_PROXY="http://127.0.0.1:1080"
+```
+
+该代理只用于缓存 MISS 和过期/legacy 资源的条件校验；`HIT-PRIMARY` 不会连接上游。留空时直接连接 CDN。这里需要填写 HTTP CONNECT 代理地址；PAC 把请求交给本地缓存后，不会自动串联 Windows 的 `ProxyServer`。
 
 ## 测试
 

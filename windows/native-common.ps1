@@ -49,6 +49,7 @@ function Get-GBFNativeConfig {
         FreshSeconds = [int](Pick 'GBF_CACHE_FRESH_SECONDS' '21600')
         ProxyPort = [int](Pick 'GBF_CACHE_PROXY_PORT' '18123')
         PacPort = [int](Pick 'GBF_CACHE_PAC_PORT' '18124')
+        UpstreamProxy = (Pick 'GBF_UPSTREAM_PROXY' '')
         VenvRoot = (Join-Path $repo '.venv-windows')
         MitmConfRoot = (Join-Path $stateRoot 'mitmproxy')
         RuntimeFile = (Join-Path $stateRoot 'native-runtime.json')
@@ -62,6 +63,7 @@ function Set-GBFProcessEnvironment {
     $env:GBF_CACHE_FRESH_SECONDS = [string]$Config.FreshSeconds
     $env:GBF_CACHE_PROXY_PORT = [string]$Config.ProxyPort
     $env:GBF_CACHE_PAC_PORT = [string]$Config.PacPort
+    $env:GBF_UPSTREAM_PROXY = $Config.UpstreamProxy
     $env:PYTHONPATH = $Config.RepoRoot
     $env:PYTHONUNBUFFERED = '1'
 }
@@ -85,10 +87,10 @@ function Get-GBFCompatiblePython {
     $candidates = @()
     $py = Get-Command py.exe -ErrorAction SilentlyContinue
     if ($py) {
-        foreach ($selector in @('-3.13', '-3.12')) {
+        foreach ($selector in @('-3', '-3.14', '-3.13', '-3.12')) {
             try {
                 $version = & $py.Source $selector -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
-                if ($LASTEXITCODE -eq 0 -and $version -match '^3\.(12|13)$') {
+                if ($LASTEXITCODE -eq 0 -and $version -match '^3\.(1[2-9]|[2-9][0-9])$') {
                     $exe = & $py.Source $selector -c "import sys; print(sys.executable)"
                     if ($LASTEXITCODE -eq 0 -and $exe) { return $exe.Trim() }
                 }
@@ -101,11 +103,21 @@ function Get-GBFCompatiblePython {
     }
     foreach ($exe in $candidates | Select-Object -Unique) {
         try {
-            $ok = & $exe -c "import sys; raise SystemExit(0 if (3,12) <= sys.version_info[:2] < (3,14) else 1)"
+            $ok = & $exe -c "import sys; raise SystemExit(0 if sys.version_info.major == 3 and sys.version_info.minor >= 12 else 1)"
             if ($LASTEXITCODE -eq 0) { return $exe }
         } catch {}
     }
     return $null
+}
+
+function Stop-GBFProcessTree {
+    param([int]$PidValue)
+    if ($PidValue -le 0) { return }
+    $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$PidValue" -ErrorAction SilentlyContinue)
+    foreach ($child in $children) {
+        Stop-GBFProcessTree ([int]$child.ProcessId)
+    }
+    Stop-Process -Id $PidValue -Force -ErrorAction SilentlyContinue
 }
 
 function Test-GBFOwnedProcess {

@@ -3,6 +3,11 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'native-common.ps1')
 
 $cfg = Get-GBFNativeConfig
+$mitmMode = if ([string]::IsNullOrWhiteSpace($cfg.UpstreamProxy)) {
+    'regular'
+} else {
+    "upstream:$($cfg.UpstreamProxy)"
+}
 $python = Join-Path $cfg.VenvRoot 'Scripts\python.exe'
 $mitmdump = Join-Path $cfg.VenvRoot 'Scripts\mitmdump.exe'
 if (-not (Test-Path $python) -or -not (Test-Path $mitmdump)) {
@@ -43,12 +48,12 @@ $pac = Start-Process -FilePath $python -ArgumentList @(
 
 try {
     $mitm = Start-Process -FilePath $mitmdump -ArgumentList @(
-        '--mode', 'regular', '--listen-host', '127.0.0.1', '--listen-port', [string]$cfg.ProxyPort,
+        '--mode', $mitmMode, '--listen-host', '127.0.0.1', '--listen-port', [string]$cfg.ProxyPort,
         '--set', "confdir=$($cfg.MitmConfRoot)", '--set', 'connection_strategy=lazy',
         '--set', 'flow_detail=0', '-s', (Join-Path $cfg.RepoRoot 'gbf_cache\addon.py')
     ) -WindowStyle Hidden -PassThru -RedirectStandardOutput $mitmOut -RedirectStandardError $mitmErr
 } catch {
-    Stop-Process -Id $pac.Id -Force -ErrorAction SilentlyContinue
+    Stop-GBFProcessTree ([int]$pac.Id)
     throw
 }
 
@@ -65,15 +70,16 @@ $runtime | ConvertTo-Json | Set-Content -Encoding UTF8 $cfg.RuntimeFile
 $ready = $false
 for ($i = 0; $i -lt 80; $i++) {
     if ($pac.HasExited -or $mitm.HasExited) { break }
-    try {
-        Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Uri "http://127.0.0.1:$($cfg.PacPort)/proxy.pac" | Out-Null
-        if (Test-GBFTcpPort $cfg.ProxyPort) { $ready = $true; break }
-    } catch {}
+    if ((Test-GBFTcpPort $cfg.PacPort) -and (Test-GBFTcpPort $cfg.ProxyPort)) {
+        $ready = $true
+        break
+    }
     Start-Sleep -Milliseconds 100
 }
 
 if (-not $ready) {
-    Stop-Process -Id $pac.Id, $mitm.Id -Force -ErrorAction SilentlyContinue
+    Stop-GBFProcessTree ([int]$mitm.Id)
+    Stop-GBFProcessTree ([int]$pac.Id)
     Remove-Item $cfg.RuntimeFile -Force -ErrorAction SilentlyContinue
     Write-Host 'PAC stderr:'; Get-Content $pacErr -Tail 30 -ErrorAction SilentlyContinue
     Write-Host 'mitmproxy stderr:'; Get-Content $mitmErr -Tail 50 -ErrorAction SilentlyContinue
@@ -82,3 +88,4 @@ if (-not $ready) {
 
 Write-Host "started native Windows cache: proxy=$($cfg.ProxyPort) pac=$($cfg.PacPort)"
 Write-Host "primary cache: $($cfg.CacheRoot)"
+if ($cfg.UpstreamProxy) { Write-Host 'cache miss upstream: configured' }
