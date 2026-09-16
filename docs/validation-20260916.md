@@ -30,6 +30,9 @@ same `wsl.exe -d ... -u ...` command with window style `0`.
 - The WSL cache process remained owned by the repo's Linux user rather than
   `root`.
 
+This Windows-side periodic watchdog was later superseded on the home machine
+by a systemd user service inside WSL; see the follow-up below.
+
 ## Cross-version reuse
 
 GBF's versioned static paths use `/assets/<timestamp>/...`. The current release
@@ -104,8 +107,28 @@ more than one URL hardlink, with the highest observed link count at 11.
 
 ## Regression
 
-- Linux/WSL pytest: 14 passed.
+- Linux/WSL pytest: 15 passed.
 - Windows Python 3.12 on NTFS pytest: 14 passed, including hardlink dedup tests.
 - `pip check`: clean.
 - All shell launchers passed `bash -n`.
 - All PowerShell scripts parsed successfully under Windows PowerShell 5.1.
+
+## systemd and ACGPower scope follow-up
+
+- WSL has systemd enabled, and the `axelhu` user manager reports `Linger=yes`.
+- Runtime ownership moved to an enabled user service with `Restart=always`.
+  A forced `SIGKILL` of the service MainPID recovered in about 1.9 seconds;
+  proxy port `18123` became ready about 0.1 seconds after the new MainPID.
+- The periodic Windows watchdog task was removed from the home machine. The
+  Windows Startup VBS now only wakes WSL and starts the systemd service once at
+  login, falling back to `bin/start.sh` if systemd is unavailable.
+- Decompiled ACGPower scope is exactly
+  `mp3/swf/png/jpg/flv/js/css/gif/woff/otf/mp4`, with GBF adding `zip`; the
+  replacement was narrowed to the same allowlist.
+- The complete newer ACGPower x64 GBF cache contained 39,665 JS, 14,756 PNG,
+  7,327 JPG, 1,158 CSS, 11 MP3 and 2 WOFF bodies (62,919 total). JavaScript is
+  the majority by object count, while PNG/JPG dominate stored bytes.
+- A hot-cache comparison measured about 10–11 ms from a WSL client to the WSL
+  proxy versus about 16–17 ms from Windows through mirrored localhost to the
+  WSL proxy. The cross-system hop is measurable but small compared with CDN
+  miss/revalidation latency.

@@ -9,6 +9,7 @@
 - 只缓存 GET 静态资源；Range、Authorization、HTML/JSON、`no-store`/`private` 响应绕过缓存。
 - 首次下载的新资源写入本地 primary cache；之后优先从本地磁盘返回。
 - 可选读取已有 ACGPower `cache/gbf` 目录作为 **只读 legacy cache**，用 ETag / Last-Modified 验证后复用，无需运行 ACGPower 本体。
+- 缓存资源扩展名保持与逆向确认的 ACGPower GBF 范围一致：`.mp3/.swf/.png/.jpg/.flv/.js/.css/.gif/.woff/.otf/.mp4/.zip`；不会默认扩大到任意静态文件。
 - 对 `/assets/<version>/...` 资源支持**跨版本复用**：新版本首次访问先用短 HEAD 验证 ETag 哈希、长度和编码，正文未变化时直接复用旧版本 body，不重新下载。
 - primary body 使用 `.objects/md5/...` 内容寻址池 + hardlink 去重；不同版本/URL 若正文完全相同，只占一份磁盘数据。
 - GBF CDN 的 PAC 规则包含 `DIRECT` fallback：本地缓存服务停掉时，静态资源仍可直接访问 CDN。
@@ -150,6 +151,22 @@ PYTHONPATH="$PWD" .venv/bin/python tools/migrate_primary.py \
 ./bin/status.sh
 ./bin/stop.sh
 ```
+
+WSL 已启用 systemd 时，推荐把运行时直接交给 Linux user service 管理：
+
+```bash
+./bin/install-systemd-user.sh
+```
+
+它使用 `Restart=always`，proxy/PAC 自身异常时由 Linux 立即重启。Windows Startup 只负责在登录时唤醒一次 WSL；如果整个 distro 被手动 `wsl --shutdown`，Linux 内部当然无法自行把 WSL 重新启动，但 PAC fallback 仍会让请求退到原 SOCKS/DIRECT 路径。
+
+WSL + systemd 环境推荐让 systemd user service 直接管理运行时，而不是在 Windows 侧周期轮询：
+
+```bash
+./bin/install-systemd-user.sh
+```
+
+该 service 使用 `Restart=always`，proxy/PAC 自身异常时由 Linux 立即重启。Windows Startup 只需在登录时唤醒一次 WSL；若整个 WSL 被手动 `wsl --shutdown`，Linux 内部无法自行唤醒，PAC 的 SOCKS/DIRECT fallback 仍保证网络可用。
 
 默认端口：
 

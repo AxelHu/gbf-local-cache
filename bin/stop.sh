@@ -11,6 +11,15 @@ fi
 
 STATE="${GBF_CACHE_STATE_DIR:-$ROOT/.state}"
 PIDFILE="$STATE/service.pid"
+USER_UNIT="$HOME/.config/systemd/user/gbf-local-cache.service"
+
+if [[ -f "$USER_UNIT" ]] && command -v systemctl >/dev/null 2>&1 \
+   && systemctl --user is-active --quiet gbf-local-cache.service; then
+  systemctl --user stop gbf-local-cache.service
+  rm -f "$PIDFILE"
+  echo "stopped systemd service"
+  exit 0
+fi
 
 if [[ ! -s "$PIDFILE" ]]; then
   echo "not running"

@@ -35,7 +35,7 @@ if ($LinuxUser -notmatch '^[A-Za-z0-9._-]+$') {
 
 $Startup = [Environment]::GetFolderPath('Startup')
 $Target = Join-Path $Startup 'GBF Local Cache.vbs'
-$Command = "wsl.exe -d $Distro -u $LinuxUser -- bash -lc `"cd '$RepoPath' && ./bin/start.sh`""
+$Command = "wsl.exe -d $Distro -u $LinuxUser -- bash -lc `"cd '$RepoPath' && (systemctl --user start gbf-local-cache.service >/dev/null 2>&1 || ./bin/start.sh)`""
 
 $escaped = $Command.Replace('"', '""')
 $content = @"

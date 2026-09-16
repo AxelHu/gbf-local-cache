@@ -10,6 +10,7 @@ from tools.pac_server import chained_pac, pac
 from gbf_cache.core import (
     CacheMeta,
     CacheStore,
+    RESOURCE_EXTENSIONS,
     conditional_request_matches,
     etag_content_md5,
     is_static_host,
@@ -38,6 +39,13 @@ def test_only_get_static_resources_are_cacheable() -> None:
     assert not request_is_cacheable("GET", "https://example.com/a.js", {})
     assert not request_is_cacheable("GET", URL, {"Range": "bytes=0-10"})
     assert not request_is_cacheable("GET", URL, {"Authorization": "x"})
+
+
+def test_resource_extensions_match_acgpower_gbf_scope() -> None:
+    assert RESOURCE_EXTENSIONS == {
+        ".mp3", ".swf", ".png", ".jpg", ".flv", ".js", ".css",
+        ".gif", ".woff", ".otf", ".mp4", ".zip",
+    }
 
 
 def test_acgpower_legacy_layout_and_metadata(tmp_path: Path) -> None:

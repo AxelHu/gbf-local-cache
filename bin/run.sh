@@ -28,6 +28,7 @@ export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 export PYTHONUNBUFFERED=1
 
 mkdir -p "$STATE" "$CONF" "$GBF_CACHE_ROOT"
+echo "$$" >"$STATE/service.pid"
 
 "$ROOT/.venv/bin/python" "$ROOT/tools/pac_server.py" \
   --host 0.0.0.0 --port "$PAC_PORT" --proxy-port "$PROXY_PORT" \
@@ -42,6 +43,9 @@ cleanup() {
   wait "$MITM_PID" 2>/dev/null || true
   wait "$COMPAT_PAC_PID" 2>/dev/null || true
   wait "$PAC_PID" 2>/dev/null || true
+  if [[ -f "$STATE/service.pid" ]] && [[ "$(cat "$STATE/service.pid" 2>/dev/null || true)" == "$$" ]]; then
+    rm -f "$STATE/service.pid"
+  fi
 }
 trap cleanup EXIT INT TERM
 

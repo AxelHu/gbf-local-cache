@@ -156,6 +156,22 @@ X-GBF-Local-Cache: REVALIDATED
 
 ## 6. 登录自启动（可选）
 
+### 推荐：WSL 内 systemd 自愈
+
+WSL 已启用 systemd 时，先安装 user service：
+
+```bash
+./bin/install-systemd-user.sh
+```
+
+它直接监督 `bin/run.sh`，进程异常会由 systemd `Restart=always` 立即恢复，不需要 Windows 每隔几分钟调用一次 `wsl.exe`。卸载：
+
+```bash
+./bin/uninstall-systemd-user.sh
+```
+
+随后仍建议安装下面的 Windows Startup VBS。它只负责在 Windows 登录时启动/唤醒一次 WSL 并启动 systemd service。
+
 先查 WSL distro：
 
 ```powershell
@@ -174,7 +190,7 @@ wsl.exe -l -q
 
 它只在当前用户 Startup 目录创建一个静默 VBS；不会创建系统服务。
 
-Startup 只在登录时执行一次。如果 WSL 后续被关闭，推荐额外安装自愈 watchdog：
+如果目标 WSL **没有 systemd**，才建议额外安装 Windows 侧自愈 watchdog：
 
 ```powershell
 .\windows\install-watchdog.ps1 `
@@ -182,7 +198,7 @@ Startup 只在登录时执行一次。如果 WSL 后续被关闭，推荐额外�
   -RepoPath /home/user/src/gbf-local-cache
 ```
 
-watchdog 在登录时运行，并默认每 5 分钟幂等执行一次 `bin/start.sh`。脚本会显式使用 repo 的 Linux 文件所有者作为 `wsl.exe -u` 用户，避免 Windows 调 WSL 时默认成为 `root` 并留下 root-owned PID/state 文件。计划任务通过 `wscript.exe` 调用隐藏 VBS，不直接周期性启动 `wsl.exe` 控制台窗口，因此不会每几分钟闪一次 shell。
+watchdog 在登录时运行，并默认每 5 分钟幂等执行一次 `bin/start.sh`。脚本会显式使用 repo 的 Linux 文件所有者作为 `wsl.exe -u` 用户，避免 Windows 调 WSL 时默认成为 `root` 并留下 root-owned PID/state 文件。计划任务通过 `wscript.exe` 调用隐藏 VBS，不直接周期性启动 `wsl.exe` 控制台窗口，因此不会每几分钟闪一次 shell。已有 systemd 的机器不建议同时启用这层周期 watchdog。
 
 移除 watchdog：
 

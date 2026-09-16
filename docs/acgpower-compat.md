@@ -47,6 +47,27 @@ The CDN hostname is omitted, allowing the `a`, `a1`, `a2`, etc. Akamai aliases t
 
 The body can be stored in its original compressed representation. `ce` and `ct` are therefore required when reconstructing a response.
 
+## Resource type scope
+
+The decompiled common game filter registers exactly these static extensions:
+
+`mp3, swf, png, jpg, flv, js, css, gif, woff, otf, mp4`
+
+The GBF filter adds `zip`. The replacement intentionally keeps the same allowlist instead of broadly caching every modern web asset extension.
+
+The newer local ACGPower x64 cache gives a useful real distribution over all 62,919 GBF bodies (about 1.61 GiB):
+
+| Extension | Files | Body size |
+| --- | ---: | ---: |
+| `.js` | 39,665 | ~280.5 MiB |
+| `.png` | 14,756 | ~1,016.7 MiB |
+| `.jpg` | 7,327 | ~312.8 MiB |
+| `.css` | 1,158 | ~38.6 MiB |
+| `.mp3` | 11 | ~0.10 MiB |
+| `.woff` | 2 | ~0.02 MiB |
+
+So ACGPower was not an image-only cache: JavaScript is the majority by object count, while PNG/JPG dominate bytes. A representative recent version directory (`assets/1788931888`) contained 583 JS and 19 CSS bodies.
+
 ### Host-family caveat discovered during replacement validation
 
 ACGPower's hostless layout also collapses the `-gbf.akamaized.net` and

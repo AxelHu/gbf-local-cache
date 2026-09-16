@@ -11,7 +11,12 @@ fi
 
 STATE="${GBF_CACHE_STATE_DIR:-$ROOT/.state}"
 PIDFILE="$STATE/service.pid"
-if [[ -s "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+USER_UNIT="$HOME/.config/systemd/user/gbf-local-cache.service"
+if [[ -f "$USER_UNIT" ]] && command -v systemctl >/dev/null 2>&1 \
+   && systemctl --user is-active --quiet gbf-local-cache.service; then
+  MAIN_PID="$(systemctl --user show -p MainPID --value gbf-local-cache.service)"
+  echo "running systemd pid=$MAIN_PID"
+elif [[ -s "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
   echo "running pid=$(cat "$PIDFILE")"
 else
   echo "stopped"
