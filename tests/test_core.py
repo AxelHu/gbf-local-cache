@@ -11,9 +11,12 @@ from gbf_cache.core import (
     CacheMeta,
     CacheStore,
     conditional_request_matches,
+    etag_content_md5,
     is_static_host,
+    representation_matches,
     request_is_cacheable,
     synthesized_headers,
+    versioned_asset_parts,
 )
 
 
@@ -145,6 +148,103 @@ def test_conditional_and_cors_synthesis() -> None:
     assert conditional_request_matches(meta, {"If-None-Match": '"abc"'})
     h = synthesized_headers(meta, "prd-game-a-granbluefantasy.akamaized.net", None)
     assert h["access-control-allow-origin"] == "https://game.granbluefantasy.jp"
+
+
+def test_versioned_asset_cross_version_lookup_and_validation(tmp_path: Path) -> None:
+    primary = tmp_path / "primary"
+    old_url = "https://prd-game-a-gbf.akamaized.net/assets/1000000001/js/view/demo.js"
+    new_url = "https://prd-game-a-gbf.akamaized.net/assets/1000000002/js/view/demo.js"
+    raw = gzip.compress(b"console.log('same across versions')")
+    digest = hashlib.md5(raw, usedforsecurity=False).hexdigest()
+    store = CacheStore(primary)
+    old = store.store(
+        old_url,
+        raw,
+        {
+            "ETag": f'"1700000000-{digest}"',
+            "Content-Encoding": "gzip",
+            "Content-Type": "text/javascript; charset=UTF-8",
+            "Content-Length": str(len(raw)),
+        },
+        now=1,
+    )
+    candidate = store.find_cross_version(new_url)
+    assert candidate is not None
+    assert candidate.body_path == old.body_path
+    assert versioned_asset_parts(new_url) == ("1000000002", Path("js/view/demo.js"))
+    assert versioned_asset_parts(new_url + "?v=2") is None
+    assert etag_content_md5(f'"1700000001-{digest}"') == digest
+
+    head = {
+        "ETag": f'"1700000001-{digest}"',
+        "Content-Encoding": "gzip",
+        "Content-Type": "text/javascript;charset=UTF-8",
+        "Content-Length": str(len(raw)),
+    }
+    assert representation_matches(candidate, head)
+    assert not representation_matches(candidate, {**head, "Content-Encoding": ""})
+    assert not representation_matches(candidate, {**head, "Content-Length": str(len(raw) + 1)})
+
+    promoted = store.promote(new_url, candidate, now=2, validation_headers=head)
+    assert promoted.body_path != candidate.body_path
+    assert promoted.body_path.read_bytes() == raw
+    assert promoted.meta.etag == head["ETag"]
+    # Both version URLs point at the same content-addressed inode.
+    assert promoted.body_path.samefile(candidate.body_path)
+
+
+def test_primary_store_hash_deduplicates_different_urls(tmp_path: Path) -> None:
+    store = CacheStore(tmp_path / "primary")
+    body = b"same bytes under two unrelated static URLs"
+    headers = {"Content-Type": "application/octet-stream"}
+    a = store.store(
+        "https://prd-game-a-gbf.akamaized.net/assets/1000000001/bin/a.bin",
+        body,
+        headers,
+    )
+    b = store.store(
+        "https://prd-game-a-gbf.akamaized.net/assets/1000000002/bin/b.bin",
+        body,
+        headers,
+    )
+    assert a.body_path != b.body_path
+    assert a.body_path.samefile(b.body_path)
+    digest = hashlib.md5(body, usedforsecurity=False).hexdigest()
+    assert (store.primary_root / ".objects" / "md5" / digest[:2] / digest).is_file()
+
+
+def test_primary_cache_separates_gbf_cdn_families(tmp_path: Path) -> None:
+    store = CacheStore(tmp_path / "primary")
+    path = "/assets/1000000001/css/quest/index.css"
+    gbf_url = "https://prd-game-a-gbf.akamaized.net" + path
+    granblue_url = "https://prd-game-a-granbluefantasy.akamaized.net" + path
+    gbf = store.store(gbf_url, b"mobage variant", {"Content-Type": "text/css"})
+    granblue = store.store(granblue_url, b"granblue variant", {"Content-Type": "text/css"})
+    assert gbf.body_path != granblue.body_path
+    assert "/gbf/assets/" in gbf.body_path.as_posix()
+    assert "/granbluefantasy/assets/" in granblue.body_path.as_posix()
+    assert store.find(gbf_url).body_path.read_bytes() == b"mobage variant"
+    assert store.find(granblue_url).body_path.read_bytes() == b"granblue variant"
+
+
+def test_unscoped_primary_requires_matching_family_metadata(tmp_path: Path) -> None:
+    root = tmp_path / "primary"
+    url = "https://prd-game-a-gbf.akamaized.net/assets/1000000001/js/a.js"
+    old_body = root / "https/assets/1000000001/js/a.js"
+    old_body.parent.mkdir(parents=True)
+    old_body.write_bytes(b"wrong family")
+    Path(str(old_body) + ".ext").write_text(
+        json.dumps(
+            {
+                "md5": hashlib.md5(b"wrong family", usedforsecurity=False).hexdigest(),
+                "host": "prd-game-a-granbluefantasy.akamaized.net",
+                "ct": "text/javascript",
+                "v": 2,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert CacheStore(root).find(url) is None
 
 
 def test_system_pac_only_intercepts_gbf_static_hosts() -> None:

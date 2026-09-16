@@ -16,8 +16,10 @@ from urllib.parse import urlsplit
 # These are the GBF Akamai hosts ACGPower itself routed through its local proxy.
 # Keep this deliberately narrow: game/login/API/WebSocket domains are not here.
 STATIC_HOST_RE = re.compile(
-    r"^prd-game-a\d*-(?:gbf|granbluefantasy)\.akamaized\.net$", re.IGNORECASE
+    r"^prd-game-a\d*-(?P<family>gbf|granbluefantasy)\.akamaized\.net$", re.IGNORECASE
 )
+VERSIONED_ASSET_RE = re.compile(r"^/assets/(?P<version>\d{9,})/(?P<tail>.+)$")
+ETAG_MD5_RE = re.compile(r"(?P<md5>[0-9a-fA-F]{32})\"?\s*$")
 
 RESOURCE_EXTENSIONS = {
     ".js",
@@ -60,6 +62,11 @@ SAFE_RESPONSE_HEADERS = {
 
 def is_static_host(host: str) -> bool:
     return bool(STATIC_HOST_RE.fullmatch((host or "").lower()))
+
+
+def static_host_family(host: str) -> str | None:
+    match = STATIC_HOST_RE.fullmatch((host or "").lower())
+    return match.group("family").lower() if match else None
 
 
 def is_resource_path(path: str) -> bool:
@@ -114,6 +121,32 @@ def _query_suffix(query: str) -> str:
     if not query:
         return ""
     return ".__q_" + hashlib.sha256(query.encode("utf-8")).hexdigest()[:16]
+
+
+def versioned_asset_parts(url: str) -> tuple[str, Path] | None:
+    """Return (version, logical tail) for /assets/<timestamp>/... URLs.
+
+    Query-bearing URLs are excluded for now because ACGPower's legacy layout
+    ignored query strings and a changing query is not strong enough evidence
+    that two representations are identical.
+    """
+    parsed = urlsplit(url)
+    if parsed.query:
+        return None
+    match = VERSIONED_ASSET_RE.fullmatch(parsed.path)
+    if not match:
+        return None
+    tail = _safe_relative_path("/" + match.group("tail"))
+    if tail is None:
+        return None
+    return match.group("version"), tail
+
+
+def etag_content_md5(etag: str | None) -> str | None:
+    if not etag:
+        return None
+    match = ETAG_MD5_RE.search(etag.strip())
+    return match.group("md5").lower() if match else None
 
 
 @dataclass
@@ -198,6 +231,35 @@ class CacheEntry:
         return self.body_path.stat().st_size
 
 
+def representation_matches(entry: CacheEntry, headers: Mapping[str, str]) -> bool:
+    """Strongly verify that a HEAD response describes the cached raw body.
+
+    GBF's Akamai ETags currently end in a 32-hex digest. We still require
+    Content-Length and Content-Encoding to match because Akamai exposes the
+    same ETag across identity and compressed variants.
+    """
+    h = {str(k).lower(): str(v) for k, v in headers.items()}
+    digest = etag_content_md5(h.get("etag"))
+    if not digest or not entry.meta.md5 or digest != entry.meta.md5.lower():
+        return False
+    if not h.get("content-length"):
+        return False
+    try:
+        if int(h["content-length"]) != entry.size:
+            return False
+    except ValueError:
+        return False
+    current_encoding = (h.get("content-encoding") or "").strip().lower()
+    cached_encoding = (entry.meta.content_encoding or "").strip().lower()
+    if current_encoding != cached_encoding:
+        return False
+    current_type = (h.get("content-type") or "").split(";", 1)[0].strip().lower()
+    cached_type = (entry.meta.content_type or "").split(";", 1)[0].strip().lower()
+    if current_type and cached_type and current_type != cached_type:
+        return False
+    return True
+
+
 class CacheStore:
     def __init__(
         self,
@@ -213,6 +275,8 @@ class CacheStore:
             self.legacy_roots = [Path(root).expanduser() for root in legacy_root]
         self.primary_root.mkdir(parents=True, exist_ok=True)
         self._verified: dict[tuple[str, int, int, str | None], bool] = {}
+        self._version_dirs: dict[tuple[str, str], list[str]] = {}
+        self._cross_version_cache: dict[tuple[str, str | None, str | None], CacheEntry | None] = {}
 
     @property
     def legacy_root(self) -> Path | None:
@@ -230,6 +294,18 @@ class CacheStore:
         return path
 
     def primary_path(self, url: str) -> Path | None:
+        parsed = urlsplit(url)
+        family = static_host_family(parsed.hostname or "")
+        rel = _safe_relative_path(parsed.path)
+        if family is None or rel is None:
+            return None
+        path = self.primary_root / parsed.scheme / family / rel
+        if parsed.query:
+            path = path.with_name(path.name + _query_suffix(parsed.query))
+        return path
+
+    def primary_unscoped_path(self, url: str) -> Path | None:
+        """Pre-family primary layout used by versions <=2d6edaf."""
         return self._body_path(self.primary_root, url, include_query=True)
 
     def legacy_path(self, url: str) -> Path | None:
@@ -251,6 +327,18 @@ class CacheStore:
         entry = self._load(primary, "primary") if primary else None
         if entry:
             return entry
+        # Lazy compatibility with primary entries created before the two GBF CDN
+        # families were separated. They are safe only if their v2 metadata names
+        # the same family as the current request.
+        family = static_host_family(urlsplit(url).hostname or "")
+        unscoped = self.primary_unscoped_path(url)
+        old_primary = self._load(unscoped, "primary") if unscoped else None
+        if (
+            old_primary is not None
+            and family is not None
+            and static_host_family(old_primary.meta.host or "") == family
+        ):
+            return old_primary
         # Multiple ACGPower installs may each contain a partial/older GBF cache.
         # Prefer the entry with the newest recorded validation/access timestamp;
         # correctness still comes from conditional revalidation before promotion.
@@ -268,6 +356,104 @@ class CacheStore:
                 item.meta_path.stat().st_mtime_ns if item.meta_path.exists() else 0,
             ),
         )
+
+    def _versions_for_assets(self, assets: Path) -> list[str]:
+        key = (str(assets), "versions")
+        cached = self._version_dirs.get(key)
+        if cached is not None:
+            return cached
+        versions: list[str] = []
+        try:
+            versions = sorted(
+                (p.name for p in assets.iterdir() if p.is_dir() and p.name.isdigit()),
+                key=int,
+                reverse=True,
+            )
+        except OSError:
+            pass
+        self._version_dirs[key] = versions
+        return versions
+
+    def _register_version(self, url: str) -> None:
+        parts = versioned_asset_parts(url)
+        if parts is None:
+            return
+        version, _ = parts
+        parsed = urlsplit(url)
+        family = static_host_family(parsed.hostname or "")
+        if family is None:
+            return
+        assets = self.primary_root / parsed.scheme / family / "assets"
+        key = (str(assets), "versions")
+        versions = self._version_dirs.get(key)
+        if versions is None:
+            return
+        if version not in versions:
+            versions.append(version)
+            versions.sort(key=int, reverse=True)
+        self._cross_version_cache.clear()
+
+    def find_cross_version(
+        self,
+        url: str,
+        *,
+        content_md5: str | None = None,
+        content_encoding: str | None = None,
+    ) -> CacheEntry | None:
+        """Find a cached body for the same logical path in another asset version.
+
+        Only the numeric /assets/<version>/ component is ignored. The result is
+        never safe to serve by itself; callers must validate it against the
+        current URL first.
+        """
+        parts = versioned_asset_parts(url)
+        if parts is None:
+            return None
+        current_version, tail = parts
+        parsed = urlsplit(url)
+        family = static_host_family(parsed.hostname or "")
+        if family is None:
+            return None
+        wanted_md5 = content_md5.lower() if content_md5 else None
+        wanted_encoding = (
+            (content_encoding or "").strip().lower()
+            if content_encoding is not None
+            else None
+        )
+        cache_key = (url, wanted_md5, wanted_encoding)
+        if cache_key in self._cross_version_cache:
+            return self._cross_version_cache[cache_key]
+
+        locations: list[tuple[Path, str, bool]] = [
+            (self.primary_root / parsed.scheme / family / "assets", "primary", False),
+            # Read-only fallback for primary entries written before host-family
+            # separation. Metadata must prove that they came from this family.
+            (self.primary_root / parsed.scheme / "assets", "primary", True),
+        ]
+        locations.extend(
+            (root / parsed.scheme / "assets", "legacy", False) for root in self.legacy_roots
+        )
+        for assets, source, require_family_match in locations:
+            for version in self._versions_for_assets(assets):
+                if version == current_version:
+                    continue
+                body_path = assets / version / tail
+                entry = self._load(body_path, source)
+                if entry is None or not entry.meta.md5:
+                    continue
+                if require_family_match and static_host_family(entry.meta.host or "") != family:
+                    continue
+                if wanted_md5 and entry.meta.md5.lower() != wanted_md5:
+                    continue
+                if wanted_encoding is not None:
+                    candidate_encoding = (entry.meta.content_encoding or "").strip().lower()
+                    if candidate_encoding != wanted_encoding:
+                        continue
+                self._cross_version_cache[cache_key] = entry
+                return entry
+
+        self._cross_version_cache[cache_key] = None
+        return None
 
     def _load(self, body_path: Path, source: str) -> CacheEntry | None:
         if not body_path.is_file() or body_path.stat().st_size <= 0:
@@ -326,11 +512,43 @@ class CacheStore:
             host=urlsplit(url).hostname,
             headers={k: v for k, v in h.items() if k in SAFE_RESPONSE_HEADERS},
         )
-        _atomic_write_bytes(body_path, body)
+        self._install_deduplicated_body(body_path, body, meta.md5)
         meta_path = Path(str(body_path) + ".ext")
         _atomic_write_text(meta_path, json.dumps(meta.to_dict(), ensure_ascii=False, indent=2) + "\n")
         self._verified.clear()
+        self._register_version(url)
         return CacheEntry(body_path=body_path, meta_path=meta_path, meta=meta, source="primary")
+
+    def _install_deduplicated_body(self, body_path: Path, body: bytes, digest: str) -> None:
+        """Install a primary body through a content-addressed hardlink pool."""
+        object_path = self.primary_root / ".objects" / "md5" / digest[:2] / digest
+        object_path.parent.mkdir(parents=True, exist_ok=True)
+        if not object_path.is_file() or object_path.stat().st_size != len(body):
+            _atomic_write_bytes(object_path, body)
+
+        body_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp: str | None = None
+        try:
+            fd, tmp = tempfile.mkstemp(
+                prefix=body_path.name + ".",
+                suffix=".link",
+                dir=body_path.parent,
+            )
+            os.close(fd)
+            os.unlink(tmp)
+            os.link(object_path, tmp)
+            os.replace(tmp, body_path)
+            tmp = None
+        except OSError:
+            # Hardlinks may be unavailable on unusual filesystems. Correctness
+            # wins over deduplication in that case.
+            _atomic_write_bytes(body_path, body)
+        finally:
+            if tmp:
+                try:
+                    os.unlink(tmp)
+                except FileNotFoundError:
+                    pass
 
     def promote(
         self,
@@ -339,7 +557,8 @@ class CacheStore:
         now: int | None = None,
         validation_headers: Mapping[str, str] | None = None,
     ) -> CacheEntry:
-        if entry.source == "primary":
+        target_path = self.primary_path(url)
+        if entry.source == "primary" and target_path == entry.body_path:
             entry.meta.at = int(time.time()) if now is None else int(now)
             promoted = entry
         else:

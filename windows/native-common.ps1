@@ -47,6 +47,8 @@ function Get-GBFNativeConfig {
         CacheRoot = (Pick 'GBF_CACHE_ROOT' '%LOCALAPPDATA%\GBFLocalCache\cache\gbf')
         LegacyRoots = (Pick 'GBF_LEGACY_CACHE_ROOTS' '')
         FreshSeconds = [int](Pick 'GBF_CACHE_FRESH_SECONDS' '21600')
+        CrossVersionReuse = (Pick 'GBF_CROSS_VERSION_REUSE' '1')
+        CrossVersionProbeTimeout = (Pick 'GBF_CROSS_VERSION_PROBE_TIMEOUT' '3')
         ProxyPort = [int](Pick 'GBF_CACHE_PROXY_PORT' '18123')
         PacPort = [int](Pick 'GBF_CACHE_PAC_PORT' '18124')
         BrowserFallbackProxy = (Pick 'GBF_BROWSER_FALLBACK_PROXY' 'DIRECT')
@@ -63,6 +65,8 @@ function Set-GBFProcessEnvironment {
     $env:GBF_CACHE_ROOT = $Config.CacheRoot
     $env:GBF_LEGACY_CACHE_ROOTS = $Config.LegacyRoots
     $env:GBF_CACHE_FRESH_SECONDS = [string]$Config.FreshSeconds
+    $env:GBF_CROSS_VERSION_REUSE = [string]$Config.CrossVersionReuse
+    $env:GBF_CROSS_VERSION_PROBE_TIMEOUT = [string]$Config.CrossVersionProbeTimeout
     $env:GBF_CACHE_PROXY_PORT = [string]$Config.ProxyPort
     $env:GBF_CACHE_PAC_PORT = [string]$Config.PacPort
     $env:GBF_BROWSER_FALLBACK_PROXY = $Config.BrowserFallbackProxy

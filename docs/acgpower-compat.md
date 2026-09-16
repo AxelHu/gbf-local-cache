@@ -47,6 +47,16 @@ The CDN hostname is omitted, allowing the `a`, `a1`, `a2`, etc. Akamai aliases t
 
 The body can be stored in its original compressed representation. `ce` and `ct` are therefore required when reconstructing a response.
 
+### Host-family caveat discovered during replacement validation
+
+ACGPower's hostless layout also collapses the `-gbf.akamaized.net` and
+`-granbluefantasy.akamaized.net` families. Real validation on 2026-09-16 found
+that this is not always safe: the same versioned CSS path returned different
+gzip bodies and different ETag hashes on the two families. The replacement
+therefore shares `a/a1/a2/...` aliases **within** one family, but stores `gbf`
+and `granbluefantasy` primary entries separately. Hostless ACGPower bodies stay
+read-only candidates and are never trusted without validating the current URL.
+
 ## Validation behavior and replacement differences
 
 Observed ACGPower behavior includes a local-trust window and later validator checks using `ETag` / `Last-Modified`, plus MD5 integrity metadata. The old implementation can use a HEAD-style revalidation path.

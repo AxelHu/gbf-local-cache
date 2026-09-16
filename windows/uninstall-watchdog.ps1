@@ -8,3 +8,5 @@ if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
 } else {
     Write-Host "Watchdog task not installed: $taskName"
 }
+$helperPath = Join-Path $env:LOCALAPPDATA 'GBFLocalCache\watchdog.vbs'
+Remove-Item -LiteralPath $helperPath -Force -ErrorAction SilentlyContinue

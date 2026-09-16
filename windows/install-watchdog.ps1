@@ -44,9 +44,22 @@ if ($LinuxUser -notmatch '^[A-Za-z0-9._-]+$') {
     throw "Unsupported Linux user name for watchdog: $LinuxUser"
 }
 $bashCommand = "cd '$RepoPath' && ./bin/start.sh >/dev/null 2>&1"
-$arguments = "-d $Distro -u $LinuxUser -- bash -lc `"$bashCommand`""
+$wslCommand = "wsl.exe -d $Distro -u $LinuxUser -- bash -lc `"$bashCommand`""
 
-$action = New-ScheduledTaskAction -Execute 'wsl.exe' -Argument $arguments
+# Running wsl.exe directly from Task Scheduler can briefly flash a console
+# window every time the watchdog fires. Route the exact same command through
+# wscript.exe so the periodic health check is genuinely silent.
+$helperDir = Join-Path $env:LOCALAPPDATA 'GBFLocalCache'
+$helperPath = Join-Path $helperDir 'watchdog.vbs'
+New-Item -ItemType Directory -Force -Path $helperDir | Out-Null
+$escapedCommand = $wslCommand.Replace('"', '""')
+$vbs = @"
+Set shell = CreateObject("WScript.Shell")
+shell.Run "$escapedCommand", 0, True
+"@
+Set-Content -LiteralPath $helperPath -Value $vbs -Encoding ASCII
+
+$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument "`"$helperPath`""
 $logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $repeatTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
     -RepetitionInterval (New-TimeSpan -Minutes $EveryMinutes)
@@ -58,3 +71,4 @@ Write-Host "Installed watchdog task: $taskName (logon + every $EveryMinutes minu
 Write-Host "WSL distro: $Distro"
 Write-Host "Linux user: $LinuxUser"
 Write-Host "Repo path: $RepoPath"
+Write-Host "Hidden launcher: $helperPath"

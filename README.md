@@ -9,6 +9,8 @@
 - 只缓存 GET 静态资源；Range、Authorization、HTML/JSON、`no-store`/`private` 响应绕过缓存。
 - 首次下载的新资源写入本地 primary cache；之后优先从本地磁盘返回。
 - 可选读取已有 ACGPower `cache/gbf` 目录作为 **只读 legacy cache**，用 ETag / Last-Modified 验证后复用，无需运行 ACGPower 本体。
+- 对 `/assets/<version>/...` 资源支持**跨版本复用**：新版本首次访问先用短 HEAD 验证 ETag 哈希、长度和编码，正文未变化时直接复用旧版本 body，不重新下载。
+- primary body 使用 `.objects/md5/...` 内容寻址池 + hardlink 去重；不同版本/URL 若正文完全相同，只占一份磁盘数据。
 - GBF CDN 的 PAC 规则包含 `DIRECT` fallback：本地缓存服务停掉时，静态资源仍可直接访问 CDN。
 
 ## 两种部署方式
@@ -124,6 +126,21 @@ GBF_LEGACY_CACHE_ROOTS=""
 
 legacy cache 永远只读。验证成功的资源会按需提升到 primary cache，新资源也只写 primary cache。
 
+primary cache 会区分 `gbf` 与 `granbluefantasy` 两个 CDN family，但同一 family 内的 `a/a1/a2/...` 节点仍共享缓存。这样避免继承 ACGPower “完全忽略 host” 后可能把两个 family 的不同正文混在一起。
+
+旧版 primary cache 可以一次性迁移到新的 family 分区和内容寻址 hardlink 布局：
+
+```bash
+PYTHONPATH="$PWD" .venv/bin/python tools/migrate_primary.py \
+  --root "$HOME/.cache/gbf-local-cache/gbf"
+
+# 确认 dry-run 结果后：
+PYTHONPATH="$PWD" .venv/bin/python tools/migrate_primary.py \
+  --root "$HOME/.cache/gbf-local-cache/gbf" --apply
+```
+
+该工具只操作 primary，不会修改 ACGPower legacy 目录。
+
 仓库中的 [`examples/acgpower-cache`](examples/acgpower-cache) 只包含自制的最小目录/元数据样例，不包含任何真实游戏资源。
 
 ## 运行与状态
@@ -144,6 +161,7 @@ legacy cache 永远只读。验证成功的资源会按需提升到 primary cach
 响应头可用于确认缓存状态：
 
 - `X-GBF-Local-Cache: HIT-PRIMARY`：primary cache 直接命中。
+- `X-GBF-Local-Cache: CROSS-VERSION`：当前版本正文经 HEAD 强校验后直接复用旧版本 body。
 - `X-GBF-Local-Cache: REVALIDATED`：旧/过期缓存经 CDN 条件请求确认后复用。
 - `X-GBF-Local-Cache: MISS-STORED`：本次从 CDN 下载并写入 primary cache。
 
@@ -156,6 +174,8 @@ cache/gbf/<scheme>/<absolute URL path>
 ```
 
 正文旁的 `.ext` JSON 保存 `LastModified`、`ETag`、`at`、`md5`、`ce`、`ct`、`v` 等字段。本项目兼容这种布局，但不会修改旧目录。
+
+ACGPower 的 legacy 路径不记录 CDN host。实测发现 `-gbf` 与 `-granbluefantasy` 两个 family 在少数相同 URL path 上可能返回不同正文，因此本项目不会仅凭 legacy 的 `at` 时间直接信任它：legacy 必须先对当前 host 做在线验证，新的 primary 则按 family 分开保存。
 
 更多逆向兼容记录见 [`docs/acgpower-compat.md`](docs/acgpower-compat.md)。
 
@@ -206,4 +226,4 @@ Windows 原生：
 .\.venv-windows\Scripts\python.exe -m pytest -q
 ```
 
-开发机上的真实链路验证记录见 [`docs/validation-20260914.md`](docs/validation-20260914.md)。
+开发机上的真实链路验证记录见 [`docs/validation-20260914.md`](docs/validation-20260914.md) 与 [`docs/validation-20260916.md`](docs/validation-20260916.md)。

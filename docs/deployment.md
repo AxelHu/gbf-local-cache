@@ -182,7 +182,7 @@ Startup 只在登录时执行一次。如果 WSL 后续被关闭，推荐额外�
   -RepoPath /home/user/src/gbf-local-cache
 ```
 
-watchdog 在登录时运行，并默认每 5 分钟幂等执行一次 `bin/start.sh`。脚本会显式使用 repo 的 Linux 文件所有者作为 `wsl.exe -u` 用户，避免 Windows 调 WSL 时默认成为 `root` 并留下 root-owned PID/state 文件。
+watchdog 在登录时运行，并默认每 5 分钟幂等执行一次 `bin/start.sh`。脚本会显式使用 repo 的 Linux 文件所有者作为 `wsl.exe -u` 用户，避免 Windows 调 WSL 时默认成为 `root` 并留下 root-owned PID/state 文件。计划任务通过 `wscript.exe` 调用隐藏 VBS，不直接周期性启动 `wsl.exe` 控制台窗口，因此不会每几分钟闪一次 shell。
 
 移除 watchdog：
 
@@ -242,7 +242,11 @@ watchdog 在登录时运行，并默认每 5 分钟幂等执行一次 `bin/start
 GBF_CACHE_PROXY_PORT=18123
 GBF_CACHE_PAC_PORT=18124
 GBF_CACHE_FRESH_SECONDS=21600
+GBF_CROSS_VERSION_REUSE=1
+GBF_CROSS_VERSION_PROBE_TIMEOUT=3
 ```
+
+`GBF_CROSS_VERSION_REUSE=1` 只针对 `/assets/<version>/...` 静态资源。当前 URL 的 HEAD 响应必须同时匹配旧 body 的 ETag 哈希、`Content-Length` 与 `Content-Encoding` 才会复用；不匹配就正常下载新正文。新 primary body 同时进入 `.objects/md5/...` 内容寻址 hardlink 池，自动去重。
 
 如果改 PAC 端口，Windows `enable.ps1` 也需要传对应 URL：
 
