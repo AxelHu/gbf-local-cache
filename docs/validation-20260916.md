@@ -132,3 +132,31 @@ more than one URL hardlink, with the highest observed link count at 11.
   proxy versus about 16–17 ms from Windows through mirrored localhost to the
   WSL proxy. The cross-system hop is measurable but small compared with CDN
   miss/revalidation latency.
+
+## Home deployment pause point
+
+The home machine will **stay on the WSL deployment for now** instead of
+migrating the live cache to native Windows. Native Windows remains a supported
+deployment option, but the measured 5–7 ms mirrored-localhost overhead is too
+small to justify migrating a healthy ext4 primary cache solely for performance.
+
+The stable home topology is therefore:
+
+- Windows Chrome / ZeroOmega -> WSL cache proxy on `18123` for GBF static CDN;
+- WSL primary cache on ext4;
+- cache MISS/revalidation -> Windows Shadowsocks HTTP proxy on `127.0.0.1:1080`;
+- systemd user service owns runtime supervision and restart;
+- Windows Startup VBS only wakes WSL/starts the service once at login;
+- there is no periodic Windows Scheduled Task watchdog.
+
+This project is now considered in an **observation/stable-use phase**. Further
+changes should be driven by normal-play evidence rather than feature expansion.
+The main signals worth reviewing later are HIT/revalidate/MISS ratios,
+cross-version reuse after the next GBF asset-version rollover, primary-cache
+growth/deduplication, and current systemd-journal errors. Native Windows can be
+reconsidered if WSL lifecycle/interoperability becomes a real operational
+problem.
+
+Historical pre-systemd `.state/service.log` output from development/testing was
+archived locally as `service-20260916-pre-systemd.log`; live runtime diagnostics
+now use `journalctl --user -u gbf-local-cache.service`.
