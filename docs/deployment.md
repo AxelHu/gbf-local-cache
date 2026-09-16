@@ -135,6 +135,8 @@ powershell.exe -ExecutionPolicy Bypass -File .\windows\enable.ps1
 
 Windows Chrome 默认遵循系统 PAC，因此通常不需要浏览器扩展或 Chrome 内单独设置代理。
 
+例外：如果 ZeroOmega / SwitchyOmega 等扩展当前控制 `chrome.proxy`，扩展配置会优先于 Windows 系统 PAC。此类机器请参考 [`browser-proxy-integration.md`](browser-proxy-integration.md)，保留原来的梯子/代理路径，仅将 GBF 静态 CDN 插入本地 `18123` 缓存层。
+
 启用后建议把 Chrome **全部退出并重新打开一次**，让现有进程重新读取 PAC 和受信任 CA。
 
 验证时打开 DevTools → Network，检查一个 GBF 静态资源的响应头：
@@ -172,7 +174,23 @@ wsl.exe -l -q
 
 它只在当前用户 Startup 目录创建一个静默 VBS；不会创建系统服务。
 
-移除：
+Startup 只在登录时执行一次。如果 WSL 后续被关闭，推荐额外安装自愈 watchdog：
+
+```powershell
+.\windows\install-watchdog.ps1 `
+  -Distro Ubuntu-24.04 `
+  -RepoPath /home/user/src/gbf-local-cache
+```
+
+watchdog 在登录时运行，并默认每 5 分钟幂等执行一次 `bin/start.sh`。脚本会显式使用 repo 的 Linux 文件所有者作为 `wsl.exe -u` 用户，避免 Windows 调 WSL 时默认成为 `root` 并留下 root-owned PID/state 文件。
+
+移除 watchdog：
+
+```powershell
+.\windows\uninstall-watchdog.ps1
+```
+
+移除登录自启动：
 
 ```powershell
 .\windows\uninstall-autostart.ps1
@@ -214,6 +232,7 @@ wsl.exe -l -q
 8. 至少用一个未缓存/需校验的资源验证回源链路，不能只验证已有缓存命中；
 9. WSL 的 `.env` 或 native 的 `.env.windows` 中 legacy cache 路径符合目标机器，不应照抄示例而不检查实际磁盘；
 10. `.state/`、`.env`、`.env.windows`、`.venv-windows/`、实际缓存、CA 私钥不可提交到 Git。
+11. 如果 Chrome 使用 ZeroOmega / SwitchyOmega，必须用**真实日常 Chrome**请求做一次 `18123` 日志验收，不能只检查 Windows `AutoConfigURL` 或命令行 `curl`。
 
 ## 9. 端口和其它参数
 

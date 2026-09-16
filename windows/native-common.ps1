@@ -49,6 +49,8 @@ function Get-GBFNativeConfig {
         FreshSeconds = [int](Pick 'GBF_CACHE_FRESH_SECONDS' '21600')
         ProxyPort = [int](Pick 'GBF_CACHE_PROXY_PORT' '18123')
         PacPort = [int](Pick 'GBF_CACHE_PAC_PORT' '18124')
+        BrowserFallbackProxy = (Pick 'GBF_BROWSER_FALLBACK_PROXY' 'DIRECT')
+        AcgpowerCompatPacPort = (Pick 'GBF_ACGPOWER_COMPAT_PAC_PORT' '')
         UpstreamProxy = (Pick 'GBF_UPSTREAM_PROXY' '')
         VenvRoot = (Join-Path $repo '.venv-windows')
         MitmConfRoot = (Join-Path $stateRoot 'mitmproxy')
@@ -63,6 +65,8 @@ function Set-GBFProcessEnvironment {
     $env:GBF_CACHE_FRESH_SECONDS = [string]$Config.FreshSeconds
     $env:GBF_CACHE_PROXY_PORT = [string]$Config.ProxyPort
     $env:GBF_CACHE_PAC_PORT = [string]$Config.PacPort
+    $env:GBF_BROWSER_FALLBACK_PROXY = $Config.BrowserFallbackProxy
+    $env:GBF_ACGPOWER_COMPAT_PAC_PORT = $Config.AcgpowerCompatPacPort
     $env:GBF_UPSTREAM_PROXY = $Config.UpstreamProxy
     $env:PYTHONPATH = $Config.RepoRoot
     $env:PYTHONUNBUFFERED = '1'

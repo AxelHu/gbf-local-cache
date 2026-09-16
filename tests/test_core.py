@@ -5,6 +5,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from tools.pac_server import chained_pac, pac
+
 from gbf_cache.core import (
     CacheMeta,
     CacheStore,
@@ -143,3 +145,22 @@ def test_conditional_and_cors_synthesis() -> None:
     assert conditional_request_matches(meta, {"If-None-Match": '"abc"'})
     h = synthesized_headers(meta, "prd-game-a-granbluefantasy.akamaized.net", None)
     assert h["access-control-allow-origin"] == "https://game.granbluefantasy.jp"
+
+
+def test_system_pac_only_intercepts_gbf_static_hosts() -> None:
+    script = pac(18123)
+    assert 'return "PROXY 127.0.0.1:18123; DIRECT"' in script
+    assert script.count('return "DIRECT"') == 1
+
+
+def test_browser_proxy_pac_preserves_existing_socks_route() -> None:
+    script = chained_pac(18123, "SOCKS5 127.0.0.1:1080; DIRECT")
+    assert 'return "PROXY 127.0.0.1:18123; SOCKS5 127.0.0.1:1080; DIRECT"' in script
+    assert 'return "SOCKS5 127.0.0.1:1080; DIRECT"' in script
+
+
+def test_browser_proxy_pac_rejects_source_injection() -> None:
+    import pytest
+
+    with pytest.raises(ValueError):
+        chained_pac(18123, 'DIRECT"; alert(1); "DIRECT')

@@ -35,7 +35,12 @@ for _ in {1..80}; do
     tail -80 "$LOG" >&2 || true
     exit 1
   fi
-  if curl -fsS --max-time 1 "http://127.0.0.1:${GBF_CACHE_PAC_PORT:-18124}/proxy.pac" >/dev/null 2>&1 \
+  COMPAT_OK=1
+  if [[ -n "${GBF_ACGPOWER_COMPAT_PAC_PORT:-}" ]]; then
+    (echo >"/dev/tcp/127.0.0.1/${GBF_ACGPOWER_COMPAT_PAC_PORT}") >/dev/null 2>&1 || COMPAT_OK=0
+  fi
+  if [[ "$COMPAT_OK" -eq 1 ]] \
+     && curl -fsS --max-time 1 "http://127.0.0.1:${GBF_CACHE_PAC_PORT:-18124}/proxy.pac" >/dev/null 2>&1 \
      && (echo >"/dev/tcp/127.0.0.1/${GBF_CACHE_PROXY_PORT:-18123}") >/dev/null 2>&1; then
     sleep 0.25
     kill -0 "$PID" 2>/dev/null || continue

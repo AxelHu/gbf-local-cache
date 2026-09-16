@@ -17,3 +17,7 @@ else
   echo "stopped"
 fi
 curl -fsS --max-time 1 "http://127.0.0.1:${GBF_CACHE_PAC_PORT:-18124}/proxy.pac" | sed -n '1,12p' || true
+if [[ -n "${GBF_ACGPOWER_COMPAT_PAC_PORT:-}" ]]; then
+  echo "acgpower-compat=http://127.0.0.1:${GBF_ACGPOWER_COMPAT_PAC_PORT}/proxy.pac"
+  curl -fsS --max-time 1 "http://127.0.0.1:${GBF_ACGPOWER_COMPAT_PAC_PORT}/proxy.pac" | sed -n '1,9p' || true
+fi

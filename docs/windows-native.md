@@ -125,6 +125,8 @@ installer 会：
 
 Chrome 完全退出再打开一次后即可使用，无需浏览器扩展。
 
+如果目标 Chrome 本来就由 ZeroOmega / SwitchyOmega 控制代理，则系统 PAC 不会覆盖扩展设置。此时使用 `.env.windows` 的 `GBF_BROWSER_FALLBACK_PROXY` 和可选 `GBF_ACGPOWER_COMPAT_PAC_PORT`，按 [`browser-proxy-integration.md`](browser-proxy-integration.md) 配置 browser PAC，保留原有梯子路径。
+
 ## 6. 登录自启动
 
 ```powershell

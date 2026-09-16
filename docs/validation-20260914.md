@@ -42,3 +42,16 @@ The non-WSL path was subsequently exercised on the same Windows machine without 
 - The original WSL service remained running throughout the native test.
 
 One expected constraint was confirmed: Windows Python cannot create the native venv when the repository itself is addressed through `\\wsl.localhost\...`. Native deployments therefore require a normal Windows local-drive clone such as `C:\src\gbf-local-cache`; the installer now rejects WSL UNC roots with a clear error.
+
+## 2026-09-16 daily Windows Chrome / ZeroOmega follow-up
+
+The normal Windows Chrome profile was found to be controlled by ZeroOmega rather than the Windows system PAC. Its active profile used local Shadowsocks SOCKS5 `127.0.0.1:1080`, so the configured Windows `AutoConfigURL` did not affect the real browser. This explained why isolated temporary Chrome tests had passed while normal gameplay still felt uncached.
+
+The existing old ACGPower ZeroOmega profile was reused through a compatibility PAC. Chrome's effective PAC became:
+
+- GBF static Akamai hosts: `PROXY 127.0.0.1:18123; SOCKS5 127.0.0.1:1080; DIRECT`
+- everything else: `SOCKS5 127.0.0.1:1080; DIRECT`
+
+An actual request from the already-running daily Windows Chrome then appeared in the local proxy log. A controlled hot-path test first prewarmed a URL that Chrome had never seen; the first Chrome access produced a primary-cache hit from client connect at `11:13:50.468` to the hit log at `11:13:50.479`, about 11 ms.
+
+The original WSL Startup helper also proved insufficient for long-lived machines because it runs only at login, and Windows `wsl.exe` used the distro's default `root` user on the validation machine. Startup and the new watchdog were corrected to run explicitly as the repo's Linux owner. A forced service stop followed by Task Scheduler execution recovered the service in about 2 seconds with `LastTaskResult = 0`, restored 18123/18124/8123, and produced an `axelhu`-owned PID/runtime rather than a root-owned one.

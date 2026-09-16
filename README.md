@@ -35,6 +35,20 @@ powershell.exe -ExecutionPolicy Bypass -File "<repo-on-windows>\windows\enable.p
 
 完整部署、企业环境已有 PAC 时的注意事项、自动启动和回滚方法见 [`docs/deployment.md`](docs/deployment.md)。
 
+**如果 Chrome 已由 ZeroOmega / SwitchyOmega 控制代理，Windows 系统 PAC 不会接管该浏览器。** 此时不要关闭现有梯子，而是使用项目提供的 browser PAC：
+
+```text
+http://127.0.0.1:18124/browser-proxy.pac
+```
+
+例如原浏览器通过 Shadowsocks SOCKS5 `127.0.0.1:1080` 上网，可在 `.env` 中设置：
+
+```bash
+GBF_BROWSER_FALLBACK_PROXY="SOCKS5 127.0.0.1:1080; DIRECT"
+```
+
+此时 GBF 静态 CDN 会先走 `18123` 本地缓存，其余浏览器流量仍走原来的 `1080`。若 ZeroOmega 中还保留 PAC URL 为 `http://127.0.0.1:8123/proxy.pac` 的旧 ACGPower profile，也可以设置 `GBF_ACGPOWER_COMPAT_PAC_PORT=8123` 直接复用。见 [`docs/browser-proxy-integration.md`](docs/browser-proxy-integration.md)。
+
 ### B. 纯 Windows（不需要 WSL）
 
 把仓库 clone 到普通 Windows 本地路径，例如 `C:\src\gbf-local-cache`。原生模式不要从 `\\wsl.localhost\...` UNC 路径运行，因为 Windows Python venv 不适合建在 WSL UNC 文件系统中。

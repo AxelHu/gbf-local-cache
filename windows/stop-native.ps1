@@ -9,7 +9,9 @@ if (-not (Test-Path $cfg.RuntimeFile)) {
 }
 
 $runtime = Get-Content -Raw $cfg.RuntimeFile | ConvertFrom-Json
-foreach ($pidValue in @([int]$runtime.mitm_pid, [int]$runtime.pac_pid)) {
+$pids = @([int]$runtime.mitm_pid, [int]$runtime.pac_pid)
+if ($runtime.PSObject.Properties.Name -contains 'compat_pac_pid') { $pids += [int]$runtime.compat_pac_pid }
+foreach ($pidValue in $pids) {
     if (Test-GBFOwnedProcess $pidValue $cfg.RepoRoot) {
         Stop-GBFProcessTree $pidValue
     }
